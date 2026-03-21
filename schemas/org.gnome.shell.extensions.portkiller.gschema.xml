@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.portkiller" path="/org/gnome/shell/extensions/portkiller/">
+    <key name="badge-display-mode" type="i">
+      <default>0</default>
+      <summary>Badge Display Mode</summary>
+      <description>0: Show quantity of ports, 1: Show active dot, 2: Show nothing.</description>
+    </key>
+  </schema>
+</schemalist>
