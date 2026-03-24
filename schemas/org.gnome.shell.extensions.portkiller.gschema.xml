@@ -6,5 +6,10 @@
       <summary>Badge Display Mode</summary>
       <description>0: Show quantity of ports, 1: Show active dot, 2: Show nothing.</description>
     </key>
+    <key name="port-view-mode" type="i">
+      <default>0</default>
+      <summary>Port View Mode</summary>
+      <description>0: List by port, 1: Group by process.</description>
+    </key>
   </schema>
 </schemalist>

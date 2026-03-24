@@ -18,8 +18,12 @@
   - Show the number of active ports
   - Show a small green dot when ports are active
   - Show only the simple icon (clean mode)
+- 🧭 **Dual visualization mode**:
+  - List by port
+  - Group by process (example: `Steam: 3 puertos`)
 - 🛡️ **Smart filtering** — automatically hides common system ports and unknown processes to keep your list clean
 - 🔄 **Manual refresh** — refresh button inside the menu
+- ✅ **Safer bulk action** — "Kill All Ports" now requires an extra confirmation click
 - 🎨 **Dark-themed UI** — fits perfectly in the GNOME top bar
 
 ---
@@ -90,7 +94,8 @@ PortKiller/
 ## How It Works
 
 - Uses `ss -tlnup` (socket statistics) to list all listening TCP sockets and their associated PIDs.
-- Sends `kill -9 <PID>` to terminate a process. Falls back to `pkexec kill -9 <PID>` (polkit dialog) for processes owned by other users.
+- Sends `kill -15 <PID>` first and falls back to `kill -9 <PID>` only if needed.
+- Does not request privilege escalation (`pkexec`) from inside the extension.
 - Connects to `GSettings` to allow live customization of the panel indicator.
 - Written in modern ESM JavaScript as required by GNOME Shell 45+.
 

@@ -23,6 +23,11 @@ cp "$SOURCE_DIR/stylesheet.css" "$INSTALL_DIR/"
 cp "$SOURCE_DIR/prefs.js"       "$INSTALL_DIR/"
 cp -r "$SOURCE_DIR/schemas"     "$INSTALL_DIR/"
 
+# Compile GSettings schemas if tool is available
+if command -v glib-compile-schemas &> /dev/null; then
+    glib-compile-schemas "$INSTALL_DIR/schemas"
+fi
+
 echo "✔ Files installed."
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

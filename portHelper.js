@@ -75,7 +75,7 @@ export function getOpenPorts() {
 }
 
 /**
- * Kill a process by PID. Tries direct kill first, then pkexec as fallback.
+ * Kill a process by PID. Tries SIGTERM first, then SIGKILL.
  * @param {number} pid
  * @returns {{ success: boolean, message: string }}
  */
@@ -84,26 +84,26 @@ export function killProcess(pid) {
 
     try {
         const proc = Gio.Subprocess.new(
-            ['kill', '-9', String(pid)],
+            ['kill', '-15', String(pid)],
             Gio.SubprocessFlags.STDOUT_SILENCE | Gio.SubprocessFlags.STDERR_SILENCE
         );
         proc.wait(null);
         const exitCode = proc.get_exit_status();
 
         if (exitCode === 0) {
-            return { success: true, message: `Killed PID ${pid}` };
+            return { success: true, message: `Sent SIGTERM to PID ${pid}` };
         }
 
-        // Fallback: try pkexec for processes owned by other users
+        // Fallback: force kill without privilege escalation.
         const proc2 = Gio.Subprocess.new(
-            ['pkexec', 'kill', '-9', String(pid)],
+            ['kill', '-9', String(pid)],
             Gio.SubprocessFlags.STDOUT_SILENCE | Gio.SubprocessFlags.STDERR_SILENCE
         );
         proc2.wait(null);
         const exitCode2 = proc2.get_exit_status();
 
         if (exitCode2 === 0) {
-            return { success: true, message: `Killed PID ${pid} (elevated)` };
+            return { success: true, message: `Sent SIGKILL to PID ${pid}` };
         }
 
         return { success: false, message: `Failed to kill PID ${pid}` };

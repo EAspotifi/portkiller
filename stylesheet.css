@@ -143,6 +143,78 @@
     color: rgba(255, 255, 255, 0.45);
 }
 
+/* Process group header */
+.portkiller-process-header-item {
+    padding: 8px 14px 2px;
+}
+
+.portkiller-process-header-row {
+    spacing: 8px;
+}
+
+.portkiller-process-dot {
+    color: #27ae60;
+    font-size: 12px;
+    padding-right: 4px;
+}
+
+.portkiller-process-header-row-inline {
+    spacing: 0;
+}
+
+.portkiller-process-name-green {
+    color: #8fd3ab;
+    font-weight: bold;
+    font-size: 12px;
+}
+
+.portkiller-process-count-muted {
+    color: #b8bcc2;
+    font-size: 12px;
+}
+
+.portkiller-process-header-label {
+    color: #a9dfbf;
+    font-weight: bold;
+    font-size: 12px;
+}
+
+.portkiller-process-count-label {
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 10px;
+}
+
+/* Grouped view (accordion) */
+.portkiller-process-submenu .popup-menu-item {
+    padding-top: 6px;
+    padding-bottom: 6px;
+}
+
+.portkiller-process-submenu-box {
+    background-color: transparent;
+    box-shadow: none;
+    border: none;
+}
+
+/* GNOME submenu container defaults (gray rounded block) */
+.portkiller-process-submenu .popup-sub-menu {
+    background-color: transparent;
+    border: none;
+    box-shadow: none;
+    border-radius: 0;
+    padding: 0;
+    margin: 0;
+}
+
+.portkiller-process-submenu .popup-sub-menu .popup-menu-content {
+    background-color: transparent;
+    border: none;
+    box-shadow: none;
+    border-radius: 0;
+    padding: 0;
+    margin: 0;
+}
+
 /* Kill button */
 .portkiller-kill-btn {
     border-radius: 10px;
@@ -201,6 +273,10 @@
 
 .portkiller-killall-item:hover {
     background-color: rgba(231, 76, 60, 0.12);
+}
+
+.portkiller-killall-item.portkiller-killall-armed {
+    background-color: rgba(243, 156, 18, 0.2);
 }
 
 .portkiller-killall-icon {

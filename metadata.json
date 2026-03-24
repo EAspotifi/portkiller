@@ -3,8 +3,8 @@
   "name": "PortKiller",
   "description": "Monitor and kill processes by port. A developer tool for the GNOME top bar that lists all active listening ports and lets you kill any process with one click.",
   "settings-schema": "org.gnome.shell.extensions.portkiller",
-  "version": 1,
-  "version-name": "1.0.0",
+  "version": 2,
+  "version-name": "1.1.0",
   "shell-version": ["45", "46", "47", "48", "49"],
   "url": "https://github.com/ernest/PortKiller"
 }

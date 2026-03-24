@@ -27,6 +27,18 @@ export default class PortKillerPreferences extends ExtensionPreferences {
 
         settings.bind('badge-display-mode', row, 'selected', Gio.SettingsBindFlags.DEFAULT);
 
+        const viewRow = new Adw.ComboRow({
+            title: 'Port View Mode',
+            subtitle: 'Choose list view or grouped-by-process view',
+            model: Gtk.StringList.new([
+                'List by port',
+                'Group by process',
+            ]),
+        });
+        group.add(viewRow);
+
+        settings.bind('port-view-mode', viewRow, 'selected', Gio.SettingsBindFlags.DEFAULT);
+
         window.add(page);
     }
 }

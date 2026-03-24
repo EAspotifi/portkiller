@@ -26,11 +26,18 @@ class PortKillerIndicator extends PanelMenu.Button {
         super._init(0.0, 'PortKiller');
         this._extension = extension;
         this._ports = [];
+        this._processGroups = [];
         this._showSystemPorts = false;
         this._refreshTimeout = null;
+        this._killAllConfirmTimeout = null;
+        this._killAllArmed = false;
 
         this._settings = this._extension.getSettings();
         this._settings.connect('changed::badge-display-mode', () => this._updateBadge());
+        this._settings.connect('changed::port-view-mode', () => {
+            this._updateViewModeButtonIcon();
+            this._renderPorts();
+        });
 
         // ── Top-bar icon + label ──────────────────────────────────────────
         const box = new St.BoxLayout({
@@ -110,6 +117,22 @@ class PortKillerIndicator extends PanelMenu.Button {
             this._refresh();
         });
 
+        this._viewModeBtn = new St.Button({
+            child: new St.Icon({
+                icon_name: 'view-list-symbolic',
+                icon_size: 14,
+            }),
+            style_class: 'portkiller-icon-btn',
+            x_align: Clutter.ActorAlign.END,
+        });
+        this._viewModeBtn.connect('clicked', () => {
+            const currentMode = this._settings.get_int('port-view-mode');
+            const nextMode = currentMode === 1 ? 0 : 1;
+            this._settings.set_int('port-view-mode', nextMode);
+            this._updateViewModeButtonIcon();
+            this._renderPorts();
+        });
+
         this._refreshBtn = new St.Button({
             child: new St.Icon({
                 icon_name: 'view-refresh-symbolic',
@@ -123,9 +146,11 @@ class PortKillerIndicator extends PanelMenu.Button {
         headerBox.add_child(headerIcon);
         headerBox.add_child(headerLabel);
         headerBox.add_child(this._filterBtn);
+        headerBox.add_child(this._viewModeBtn);
         headerBox.add_child(this._refreshBtn);
         headerItem.add_child(headerBox);
         this.menu.addMenuItem(headerItem);
+        this._updateViewModeButtonIcon();
 
         // Separator
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
@@ -164,6 +189,7 @@ class PortKillerIndicator extends PanelMenu.Button {
             y_align: Clutter.ActorAlign.CENTER,
             x_expand: true,
         });
+        this._killAllLabel = killAllLabel;
         killAllBox.add_child(killAllIcon);
         killAllBox.add_child(killAllLabel);
         this._killAllItem.add_child(killAllBox);
@@ -192,6 +218,7 @@ class PortKillerIndicator extends PanelMenu.Button {
             this._ports = allPorts.filter(p => !SYSTEM_PORTS.has(p.port) && p.processName !== 'unknown');
         }
 
+        this._processGroups = this._buildProcessGroups(this._ports);
         this._renderPorts();
         this._updateBadge();
     }
@@ -232,9 +259,17 @@ class PortKillerIndicator extends PanelMenu.Button {
         }
     }
 
+    _updateViewModeButtonIcon() {
+        const mode = this._settings.get_int('port-view-mode');
+        this._viewModeBtn.child.icon_name = mode === 1
+            ? 'view-grid-symbolic'
+            : 'view-list-symbolic';
+    }
+
     _renderPorts() {
         // Clear existing port rows
         this._section.removeAll();
+        this._disarmKillAll();
 
         if (this._ports.length === 0) {
             const emptyItem = new PopupMenu.PopupBaseMenuItem({
@@ -261,12 +296,85 @@ class PortKillerIndicator extends PanelMenu.Button {
         this._killAllItem.reactive = true;
         this._killAllItem.remove_style_class_name('portkiller-killall-disabled');
 
+        const viewMode = this._settings.get_int('port-view-mode');
+        if (viewMode === 1) {
+            this._renderGroupedByProcess();
+            return;
+        }
+
         for (const portInfo of this._ports) {
             this._addPortRow(portInfo);
         }
     }
 
-    _addPortRow({ port, pid, processName }) {
+    _buildProcessGroups(ports) {
+        const groups = new Map();
+        for (const info of ports) {
+            const key = info.processName || 'unknown';
+            if (!groups.has(key)) groups.set(key, []);
+            groups.get(key).push(info);
+        }
+
+        const result = [];
+        for (const [processName, processPorts] of groups.entries()) {
+            processPorts.sort((a, b) => a.port - b.port);
+            result.push({ processName, ports: processPorts });
+        }
+        result.sort((a, b) => a.processName.localeCompare(b.processName));
+        return result;
+    }
+
+    _renderGroupedByProcess() {
+        for (const group of this._processGroups) {
+            this._addProcessGroup(group.processName, group.ports);
+        }
+    }
+
+    _addProcessGroup(processName, ports) {
+        const groupItem = new PopupMenu.PopupSubMenuMenuItem('');
+        groupItem.add_style_class_name('portkiller-process-submenu');
+        groupItem.menu?.actor?.add_style_class_name('portkiller-process-submenu-box');
+        groupItem.menu?.box?.add_style_class_name('portkiller-process-submenu-box');
+
+        // Replace default label with colored parts (theme ignores Pango markup on many labels).
+        groupItem.remove_child(groupItem.label);
+        groupItem.label.destroy();
+
+        const headerRow = new St.BoxLayout({
+            style_class: 'portkiller-process-header-row-inline',
+            y_expand: true,
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        const dotLabel = new St.Label({
+            text: '●',
+            style_class: 'portkiller-process-dot',
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        const nameLabel = new St.Label({
+            text: processName,
+            style_class: 'portkiller-process-name-green',
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        const countLabel = new St.Label({
+            text: ` : ${ports.length} ports`,
+            style_class: 'portkiller-process-count-muted',
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        headerRow.add_child(dotLabel);
+        headerRow.add_child(nameLabel);
+        headerRow.add_child(countLabel);
+        groupItem.insert_child_at_index(headerRow, 1);
+        groupItem.label_actor = nameLabel;
+
+        for (const portInfo of ports) {
+            const childItem = this._createPortRowItem(portInfo);
+            groupItem.menu.addMenuItem(childItem);
+        }
+
+        this._section.addMenuItem(groupItem);
+    }
+
+    _createPortRowItem({ port, pid, processName }) {
         const item = new PopupMenu.PopupBaseMenuItem({
             reactive: false,
             can_focus: false,
@@ -348,6 +456,11 @@ class PortKillerIndicator extends PanelMenu.Button {
         rowBox.add_child(infoBox);
         rowBox.add_child(killBtn);
         item.add_child(rowBox);
+        return item;
+    }
+
+    _addPortRow(portInfo) {
+        const item = this._createPortRowItem(portInfo);
         this._section.addMenuItem(item);
     }
 
@@ -355,11 +468,46 @@ class PortKillerIndicator extends PanelMenu.Button {
 
     _killAll() {
         if (this._ports.length === 0) return;
+        if (!this._killAllArmed) {
+            this._armKillAll();
+            return;
+        }
+
+        this._disarmKillAll();
         killAllPorts(this._ports);
         GLib.timeout_add(GLib.PRIORITY_DEFAULT, 400, () => {
             this._refresh();
             return GLib.SOURCE_REMOVE;
         });
+    }
+
+    _armKillAll() {
+        this._killAllArmed = true;
+        this._killAllItem.add_style_class_name('portkiller-killall-armed');
+        if (this._killAllLabel?.set_text) {
+            this._killAllLabel.set_text('Confirm Kill All');
+        }
+
+        if (this._killAllConfirmTimeout) {
+            GLib.source_remove(this._killAllConfirmTimeout);
+        }
+
+        this._killAllConfirmTimeout = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 3000, () => {
+            this._disarmKillAll();
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    _disarmKillAll() {
+        this._killAllArmed = false;
+        this._killAllItem.remove_style_class_name('portkiller-killall-armed');
+        if (this._killAllLabel?.set_text) {
+            this._killAllLabel.set_text('Kill All Ports');
+        }
+        if (this._killAllConfirmTimeout) {
+            GLib.source_remove(this._killAllConfirmTimeout);
+            this._killAllConfirmTimeout = null;
+        }
     }
 
     // ── Cleanup ────────────────────────────────────────────────────────────
@@ -368,6 +516,10 @@ class PortKillerIndicator extends PanelMenu.Button {
         if (this._refreshTimeout) {
             GLib.source_remove(this._refreshTimeout);
             this._refreshTimeout = null;
+        }
+        if (this._killAllConfirmTimeout) {
+            GLib.source_remove(this._killAllConfirmTimeout);
+            this._killAllConfirmTimeout = null;
         }
         super.destroy();
     }
