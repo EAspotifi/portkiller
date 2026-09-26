@@ -7,7 +7,6 @@
 import GObject from 'gi://GObject';
 import St from 'gi://St';
 import GLib from 'gi://GLib';
-import Gio from 'gi://Gio';
 import Clutter from 'gi://Clutter';
 
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
@@ -28,16 +27,20 @@ class PortKillerIndicator extends PanelMenu.Button {
         this._ports = [];
         this._processGroups = [];
         this._showSystemPorts = false;
-        this._refreshTimeout = null;
         this._killAllConfirmTimeout = null;
         this._killAllArmed = false;
+        this._pendingTimeouts = new Set();
+        this._signalIds = [];
+        this._rowSignalIds = [];
 
         this._settings = this._extension.getSettings();
-        this._settings.connect('changed::badge-display-mode', () => this._updateBadge());
-        this._settings.connect('changed::port-view-mode', () => {
-            this._updateViewModeButtonIcon();
-            this._renderPorts();
-        });
+        this._trackSettingsSignal(
+            this._settings.connect('changed::badge-display-mode', () => this._updateBadge()));
+        this._trackSettingsSignal(
+            this._settings.connect('changed::port-view-mode', () => {
+                this._updateViewModeButtonIcon();
+                this._renderPorts();
+            }));
 
         // ── Top-bar icon + label ──────────────────────────────────────────
         const box = new St.BoxLayout({
@@ -64,15 +67,67 @@ class PortKillerIndicator extends PanelMenu.Button {
         this._buildMenu();
 
         // Refresh on open
-        this.menu.connect('open-state-changed', (menu, isOpen) => {
+        this._trackSignal(this.menu, this.menu.connect('open-state-changed', (menu, isOpen) => {
             if (isOpen) this._refresh();
-        });
+        }));
 
         // Initial badge update after a short delay
-        GLib.timeout_add(GLib.PRIORITY_DEFAULT, 1500, () => {
+        this._addTimeout(GLib.PRIORITY_DEFAULT, 1500, () => {
             this._refresh();
             return GLib.SOURCE_REMOVE;
         });
+    }
+
+    _trackSettingsSignal(handlerId) {
+        this._signalIds.push([this._settings, handlerId]);
+    }
+
+    _trackSignal(source, handlerId) {
+        this._signalIds.push([source, handlerId]);
+    }
+
+    _disconnectTrackedSignals() {
+        for (const [source, handlerId] of this._signalIds) {
+            try {
+                source.disconnect(handlerId);
+            } catch (e) {
+                // Object may already be destroyed
+            }
+        }
+        this._signalIds = [];
+    }
+
+    _disconnectRowSignals() {
+        for (const [source, handlerId] of this._rowSignalIds) {
+            try {
+                source.disconnect(handlerId);
+            } catch (e) {
+                // Row may already be destroyed
+            }
+        }
+        this._rowSignalIds = [];
+    }
+
+    _trackRowSignal(source, handlerId) {
+        this._rowSignalIds.push([source, handlerId]);
+    }
+
+    _addTimeout(priority, intervalMs, callback) {
+        let sourceId;
+        sourceId = GLib.timeout_add(priority, intervalMs, () => {
+            this._pendingTimeouts.delete(sourceId);
+            return callback();
+        });
+        this._pendingTimeouts.add(sourceId);
+        return sourceId;
+    }
+
+    _removeAllTimeouts() {
+        for (const sourceId of this._pendingTimeouts) {
+            GLib.source_remove(sourceId);
+        }
+        this._pendingTimeouts.clear();
+        this._killAllConfirmTimeout = null;
     }
 
     // ── Menu skeleton ──────────────────────────────────────────────────────
@@ -111,11 +166,11 @@ class PortKillerIndicator extends PanelMenu.Button {
             style_class: 'portkiller-icon-btn',
             x_align: Clutter.ActorAlign.END,
         });
-        this._filterBtn.connect('clicked', () => {
+        this._trackSignal(this._filterBtn, this._filterBtn.connect('clicked', () => {
             this._showSystemPorts = !this._showSystemPorts;
             this._filterBtn.child.icon_name = this._showSystemPorts ? 'view-conceal-symbolic' : 'view-reveal-symbolic';
             this._refresh();
-        });
+        }));
 
         this._viewModeBtn = new St.Button({
             child: new St.Icon({
@@ -125,13 +180,13 @@ class PortKillerIndicator extends PanelMenu.Button {
             style_class: 'portkiller-icon-btn',
             x_align: Clutter.ActorAlign.END,
         });
-        this._viewModeBtn.connect('clicked', () => {
+        this._trackSignal(this._viewModeBtn, this._viewModeBtn.connect('clicked', () => {
             const currentMode = this._settings.get_int('port-view-mode');
             const nextMode = currentMode === 1 ? 0 : 1;
             this._settings.set_int('port-view-mode', nextMode);
             this._updateViewModeButtonIcon();
             this._renderPorts();
-        });
+        }));
 
         this._refreshBtn = new St.Button({
             child: new St.Icon({
@@ -141,7 +196,7 @@ class PortKillerIndicator extends PanelMenu.Button {
             style_class: 'portkiller-icon-btn',
             x_align: Clutter.ActorAlign.END,
         });
-        this._refreshBtn.connect('clicked', () => this._refresh());
+        this._trackSignal(this._refreshBtn, this._refreshBtn.connect('clicked', () => this._refresh()));
 
         headerBox.add_child(headerIcon);
         headerBox.add_child(headerLabel);
@@ -193,9 +248,9 @@ class PortKillerIndicator extends PanelMenu.Button {
         killAllBox.add_child(killAllIcon);
         killAllBox.add_child(killAllLabel);
         this._killAllItem.add_child(killAllBox);
-        this._killAllItem.connect('activate', () => {
+        this._trackSignal(this._killAllItem, this._killAllItem.connect('activate', () => {
             this._killAll();
-        });
+        }));
         this.menu.addMenuItem(this._killAllItem);
     }
 
@@ -204,7 +259,7 @@ class PortKillerIndicator extends PanelMenu.Button {
     _refresh() {
         // Animate refresh icon
         this._refreshBtn.add_style_class_name('spinning');
-        GLib.timeout_add(GLib.PRIORITY_DEFAULT, 600, () => {
+        this._addTimeout(GLib.PRIORITY_DEFAULT, 600, () => {
             this._refreshBtn.remove_style_class_name('spinning');
             return GLib.SOURCE_REMOVE;
         });
@@ -267,6 +322,7 @@ class PortKillerIndicator extends PanelMenu.Button {
     }
 
     _renderPorts() {
+        this._disconnectRowSignals();
         // Clear existing port rows
         this._section.removeAll();
         this._disarmKillAll();
@@ -431,26 +487,26 @@ class PortKillerIndicator extends PanelMenu.Button {
         killBtnBox.add_child(killLabel);
         killBtn.set_child(killBtnBox);
 
-        killBtn.connect('clicked', () => {
+        this._trackRowSignal(killBtn, killBtn.connect('clicked', () => {
             if (pid) {
                 const result = killProcess(pid);
                 if (result.success) {
                     // Show brief success state on button
                     killBtn.add_style_class_name('portkiller-kill-success');
                     killBtn.set_reactive(false);
-                    GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
+                    this._addTimeout(GLib.PRIORITY_DEFAULT, 500, () => {
                         this._refresh();
                         return GLib.SOURCE_REMOVE;
                     });
                 } else {
                     killBtn.add_style_class_name('portkiller-kill-fail');
-                    GLib.timeout_add(GLib.PRIORITY_DEFAULT, 1000, () => {
+                    this._addTimeout(GLib.PRIORITY_DEFAULT, 1000, () => {
                         killBtn.remove_style_class_name('portkiller-kill-fail');
                         return GLib.SOURCE_REMOVE;
                     });
                 }
             }
-        });
+        }));
 
         rowBox.add_child(portPill);
         rowBox.add_child(infoBox);
@@ -475,7 +531,7 @@ class PortKillerIndicator extends PanelMenu.Button {
 
         this._disarmKillAll();
         killAllPorts(this._ports);
-        GLib.timeout_add(GLib.PRIORITY_DEFAULT, 400, () => {
+        this._addTimeout(GLib.PRIORITY_DEFAULT, 400, () => {
             this._refresh();
             return GLib.SOURCE_REMOVE;
         });
@@ -490,9 +546,11 @@ class PortKillerIndicator extends PanelMenu.Button {
 
         if (this._killAllConfirmTimeout) {
             GLib.source_remove(this._killAllConfirmTimeout);
+            this._pendingTimeouts.delete(this._killAllConfirmTimeout);
         }
 
-        this._killAllConfirmTimeout = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 3000, () => {
+        this._killAllConfirmTimeout = this._addTimeout(GLib.PRIORITY_DEFAULT, 3000, () => {
+            this._killAllConfirmTimeout = null;
             this._disarmKillAll();
             return GLib.SOURCE_REMOVE;
         });
@@ -506,6 +564,7 @@ class PortKillerIndicator extends PanelMenu.Button {
         }
         if (this._killAllConfirmTimeout) {
             GLib.source_remove(this._killAllConfirmTimeout);
+            this._pendingTimeouts.delete(this._killAllConfirmTimeout);
             this._killAllConfirmTimeout = null;
         }
     }
@@ -513,14 +572,9 @@ class PortKillerIndicator extends PanelMenu.Button {
     // ── Cleanup ────────────────────────────────────────────────────────────
 
     destroy() {
-        if (this._refreshTimeout) {
-            GLib.source_remove(this._refreshTimeout);
-            this._refreshTimeout = null;
-        }
-        if (this._killAllConfirmTimeout) {
-            GLib.source_remove(this._killAllConfirmTimeout);
-            this._killAllConfirmTimeout = null;
-        }
+        this._disconnectRowSignals();
+        this._disconnectTrackedSignals();
+        this._removeAllTimeouts();
         super.destroy();
     }
 });
