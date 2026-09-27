@@ -23,7 +23,8 @@ cp "$SOURCE_DIR/stylesheet.css" "$INSTALL_DIR/"
 cp "$SOURCE_DIR/prefs.js"       "$INSTALL_DIR/"
 cp -r "$SOURCE_DIR/schemas"     "$INSTALL_DIR/"
 
-# Compile GSettings schemas if tool is available
+# Local install only: compile schemas so GSettings works from ~/.local.
+# Do NOT ship schemas/gschemas.compiled in ZIPs for extensions.gnome.org (GNOME 45+).
 if command -v glib-compile-schemas &> /dev/null; then
     glib-compile-schemas "$INSTALL_DIR/schemas"
 fi
